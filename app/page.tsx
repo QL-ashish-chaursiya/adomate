@@ -201,7 +201,7 @@ const ImageTextComposer: React.FC = () => {
 
     loadFont(selectedFont);
 
-    const textObj = new fabric.FabricText('New text', {
+    const textObj = new fabric.Textbox('New text', {
       left: 100,
       top: 100,
       fontFamily: selectedFont,
@@ -209,11 +209,19 @@ const ImageTextComposer: React.FC = () => {
       fontWeight: fontWeight,
       fill: textColor,
       opacity: textOpacity,
-      textAlign: textAlign as any
+      textAlign: textAlign as any,
+      editable: true,
+      selectable: true,
+      evented: true,
+      hasControls: true,
+      lockScalingFlip: true,
+      objectCaching: false,
     });
-
+    
     fabricCanvasRef.current.add(textObj);
     fabricCanvasRef.current.setActiveObject(textObj);
+    fabricCanvasRef.current.requestRenderAll();
+    
     updateLayersList();
     pushToUndoStack();
     triggerAutosave();
