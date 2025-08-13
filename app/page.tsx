@@ -338,7 +338,67 @@ const ImageTextComposer: React.FC = () => {
     link.href = dataURL;
     link.click();
   }, []);
-
+  const onFontSizeChange = (size: number) => {
+    setFontSize(size);
+    if (selectedObject && selectedObject.type === 'textbox') {
+      selectedObject.set('fontSize', size);
+      fabricCanvasRef.current?.requestRenderAll();
+      pushToUndoStack();
+      triggerAutosave();
+    }
+  };
+  
+  const onFontWeightChange = (weight: string) => {
+    setFontWeight(weight);
+    if (selectedObject && selectedObject.type === 'textbox') {
+      selectedObject.set('fontWeight', weight);
+      fabricCanvasRef.current?.requestRenderAll();
+      pushToUndoStack();
+      triggerAutosave();
+    }
+  };
+  
+  const onFontChange = (font: string) => {
+    setSelectedFont(font);
+    if (selectedObject && selectedObject.type === 'textbox') {
+      selectedObject.set('fontFamily', font);
+      loadFont(font);
+      fabricCanvasRef.current?.requestRenderAll();
+      pushToUndoStack();
+      triggerAutosave();
+    }
+  };
+  
+  const onColorChange = (color: string) => {
+    setTextColor(color);
+    if (selectedObject && selectedObject.type === 'textbox') {
+      selectedObject.set('fill', color);
+      fabricCanvasRef.current?.requestRenderAll();
+      pushToUndoStack();
+      triggerAutosave();
+    }
+  };
+  
+  const onOpacityChange = (opacity: number) => {
+    setTextOpacity(opacity);
+    if (selectedObject && selectedObject.type === 'textbox') {
+      selectedObject.set('opacity', opacity);
+      fabricCanvasRef.current?.requestRenderAll();
+      pushToUndoStack();
+      triggerAutosave();
+    }
+  };
+  
+  const onTextAlignChange = (align: string) => {
+    setTextAlign(align);
+    if (selectedObject && selectedObject.type === 'textbox') {
+      selectedObject.set('textAlign', align as any);
+      fabricCanvasRef.current?.requestRenderAll();
+      pushToUndoStack();
+      triggerAutosave();
+    }
+  };
+  
   return (
     <div className="max-w-6xl mx-auto p-6 bg-white rounded-lg shadow-lg">
       <h1 className="text-3xl font-bold text-center mb-6">Image Text Composer</h1>
@@ -359,65 +419,65 @@ const ImageTextComposer: React.FC = () => {
         >
           Add Text
         </button>
-
         <select
-          value={selectedFont}
-          onChange={(e) => setSelectedFont(e.target.value)}
-          className="px-2 py-1 border rounded max-w-48"
-        >
-          {FONT_LIST.map(font => (
-            <option key={font} value={font}>{font}</option>
-          ))}
-        </select>
+  value={selectedFont}
+  onChange={e => onFontChange(e.target.value)}
+  className="px-2 py-1 border rounded max-w-48"
+>
+  {FONT_LIST.map(font => (
+    <option key={font} value={font}>
+      {font}
+    </option>
+  ))}
+</select>
 
-        <input
-          type="number"
-          min="10"
-          max="150"
-          value={fontSize}
-          onChange={(e) => setFontSize(Number(e.target.value))}
-          className="w-16 px-2 py-1 border rounded"
-        />
+<input
+  type="number"
+  min="10"
+  max="150"
+  value={fontSize}
+  onChange={e => onFontSizeChange(Number(e.target.value))}
+  className="w-16 px-2 py-1 border rounded"
+/>
 
-        <select
-          value={fontWeight}
-          onChange={(e) => setFontWeight(e.target.value)}
-          className="px-2 py-1 border rounded"
-        >
-          <option value="300">Light</option>
-          <option value="400">Normal</option>
-          <option value="700">Bold</option>
-        </select>
+<select
+  value={fontWeight}
+  onChange={e => onFontWeightChange(e.target.value)}
+  className="px-2 py-1 border rounded"
+>
+  <option value="300">Light</option>
+  <option value="400">Normal</option>
+  <option value="700">Bold</option>
+</select>
 
-        <input
-          type="color"
-          value={textColor}
-          onChange={(e) => setTextColor(e.target.value)}
-          className="w-12 h-8 border rounded"
-        />
+<input
+  type="color"
+  value={textColor}
+  onChange={e => onColorChange(e.target.value)}
+  className="w-12 h-8 border rounded"
+/>
 
-        <div className="flex items-center gap-2">
-          <label className="text-sm">Opacity</label>
-          <input
-            type="range"
-            min="0.1"
-            max="1"
-            step="0.05"
-            value={textOpacity}
-            onChange={(e) => setTextOpacity(Number(e.target.value))}
-            className="w-20"
-          />
-        </div>
+<input
+  type="range"
+  min="0.1"
+  max="1"
+  step="0.05"
+  value={textOpacity}
+  onChange={e => onOpacityChange(Number(e.target.value))}
+  className="w-20"
+/>
 
-        <select
-          value={textAlign}
-          onChange={(e) => setTextAlign(e.target.value)}
-          className="px-2 py-1 border rounded"
-        >
-          <option value="left">Left</option>
-          <option value="center">Center</option>
-          <option value="right">Right</option>
-        </select>
+<select
+  value={textAlign}
+  onChange={e => onTextAlignChange(e.target.value)}
+  className="px-2 py-1 border rounded"
+>
+  <option value="left">Left</option>
+  <option value="center">Center</option>
+  <option value="right">Right</option>
+</select>
+
+        
 
         <button
           onClick={undo}
