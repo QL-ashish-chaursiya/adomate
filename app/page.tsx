@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
@@ -51,7 +50,10 @@ const ImageTextComposer: React.FC = () => {
   const [redoStack, setRedoStack] = useState<string[]>([]);
   const [autosaveStatus, setAutosaveStatus] = useState('');
   const [displayScale, setDisplayScale] = useState(1);
-
+  // New state to store original image dimensions
+  const [originalImageDimensions, setOriginalImageDimensions] = useState<{ width: number; height: number } | null>(null);
+  const maxWidth = 1100;
+  const maxHeight = 600;
   // Push current state to undo stack
   const pushToUndoStack = useCallback(() => {
     if (!fabricCanvasRef.current) return;
@@ -141,6 +143,7 @@ const ImageTextComposer: React.FC = () => {
         const bg = fabricCanvasRef.current?.backgroundImage as fabric.FabricImage | undefined;
         if (bg) {
           setDisplayScale(bg.scaleX || 1);
+          // Optionally, restore original dimensions if saved in state
         }
       });
     }
@@ -151,8 +154,8 @@ const ImageTextComposer: React.FC = () => {
     if (!canvasRef.current) return;
 
     const canvas = new fabric.Canvas(canvasRef.current, {
-      width: 800,
-      height: 600,
+      width:maxWidth,
+      height:  maxHeight,
       backgroundColor: '#ffffff'
     });
 
@@ -271,9 +274,11 @@ const ImageTextComposer: React.FC = () => {
         const canvas = fabricCanvasRef.current;
         const origWidth = img.width!;
         const origHeight = img.height!;
-        const maxWidth = 800;
-        const maxHeight = 600;
+        
         const scale = Math.min(maxWidth / origWidth, maxHeight / origHeight, 1);
+
+        // Store original dimensions
+        setOriginalImageDimensions({ width: origWidth, height: origHeight });
 
         canvas.setWidth(origWidth * scale);
         canvas.setHeight(origHeight * scale);
@@ -426,8 +431,8 @@ const ImageTextComposer: React.FC = () => {
     if (fabricCanvasRef.current) {
       fabricCanvasRef.current.clear();
       fabricCanvasRef.current.backgroundImage = undefined; // Fixed assignment
-      fabricCanvasRef.current.setWidth(800);
-      fabricCanvasRef.current.setHeight(600);
+      fabricCanvasRef.current.setWidth(maxWidth);
+      fabricCanvasRef.current.setHeight(maxHeight);
       fabricCanvasRef.current.renderAll();
     }
 
@@ -437,6 +442,7 @@ const ImageTextComposer: React.FC = () => {
     setUndoStack([]);
     setRedoStack([]);
     setDisplayScale(1);
+    setOriginalImageDimensions(null); // Reset original dimensions
     updateLayersList();
   }, [updateLayersList]);
 
@@ -444,19 +450,88 @@ const ImageTextComposer: React.FC = () => {
   const exportToPNG = useCallback(() => {
     if (!fabricCanvasRef.current) return;
 
-    const multiplier = 1 / displayScale;
+    // If no background image is set, use default canvas dimensions
+    if (!originalImageDimensions) {
+      const dataURL = fabricCanvasRef.current.toDataURL({
+        format: 'png',
+        quality: 1.0,
+        multiplier: 1
+      });
 
-    const dataURL = fabricCanvasRef.current.toDataURL({
+      const link = document.createElement('a');
+      link.download = 'composition.png';
+      link.href = dataURL;
+      link.click();
+      return;
+    }
+
+    // Temporarily set canvas to original dimensions for export
+    const canvas = fabricCanvasRef.current;
+    const currentWidth = canvas.getWidth();
+    const currentHeight = canvas.getHeight();
+    const currentBackground = canvas.backgroundImage as fabric.FabricImage | undefined;
+
+    // Scale canvas and objects to original dimensions
+    canvas.setWidth(originalImageDimensions.width);
+    canvas.setHeight(originalImageDimensions.height);
+
+    if (currentBackground) {
+      currentBackground.set({
+        scaleX: 1,
+        scaleY: 1
+      });
+    }
+
+    // Adjust text objects to maintain their relative size
+    canvas.getObjects().forEach((obj) => {
+      if (obj.type === 'textbox') {
+        const textObj = obj as fabric.Textbox;
+        textObj.scaleX = (textObj.scaleX || 1) / displayScale;
+        textObj.scaleY = (textObj.scaleY || 1) / displayScale;
+        textObj.left = (textObj.left || 0) / displayScale;
+        textObj.top = (textObj.top || 0) / displayScale;
+        textObj.setCoords();
+      }
+    });
+
+    canvas.renderAll();
+
+    // Export at original dimensions
+    const dataURL = canvas.toDataURL({
       format: 'png',
       quality: 1.0,
-      multiplier: multiplier
+      multiplier: 1 // No scaling needed as canvas is set to original dimensions
     });
 
     const link = document.createElement('a');
     link.download = 'composition.png';
     link.href = dataURL;
     link.click();
-  }, [displayScale]);
+
+    // Restore canvas to display dimensions
+    canvas.setWidth(currentWidth);
+    canvas.setHeight(currentHeight);
+    if (currentBackground) {
+      currentBackground.set({
+        scaleX: displayScale,
+        scaleY: displayScale
+      });
+    }
+
+    // Restore text objects
+    canvas.getObjects().forEach((obj) => {
+      if (obj.type === 'textbox') {
+        const textObj = obj as fabric.Textbox;
+        textObj.scaleX = (textObj.scaleX || 1) * displayScale;
+        textObj.scaleY = (textObj.scaleY || 1) * displayScale;
+        textObj.left = (textObj.left || 0) * displayScale;
+        textObj.top = (textObj.top || 0) * displayScale;
+        textObj.setCoords();
+      }
+    });
+
+    canvas.renderAll();
+  }, [displayScale, originalImageDimensions]);
 
   const onFontSizeChange = (size: number) => {
     setFontSize(size);
