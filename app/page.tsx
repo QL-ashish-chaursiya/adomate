@@ -256,12 +256,21 @@ const ImageTextComposer: React.FC = () => {
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [selectedObject, pushToUndoStack, triggerAutosave, deleteSelectedLayer]);
-
+  const MAX_IMAGE_SIZE_MB = 4; // 4MB max
+  const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
   // Handle image upload
   const handleImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
-    if (!file || !file.type.includes('image/')) {
-      alert('Please select a valid image file');
+    
+    if (!file || file.type !== 'image/png') {
+      alert('Please select a valid PNG image file under 4MB.');
+      // Reset the input to clear file name
+      if (event.target.value) event.target.value = '';
+      return;
+    }
+    if (file.size > MAX_IMAGE_SIZE_BYTES) {
+      alert('Image exceeds 4MB. Please choose a smaller PNG.');
+      if (event.target.value) event.target.value = '';
       return;
     }
 
@@ -604,7 +613,7 @@ const ImageTextComposer: React.FC = () => {
         <input
           ref={fileInputRef}
           type="file"
-          accept="image/*"
+          accept="image/png"
           onChange={handleImageUpload}
           className="text-sm"
         />
