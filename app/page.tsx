@@ -102,9 +102,7 @@ const loadFont = useCallback((fontFamily: string) => {
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.id = linkId;
-    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(
-      fontFamily.replace(/\s/g, '+')
-    )}:wght@300;400;700&display=swap`;
+    link.href = `https://fonts.googleapis.com/css2?family=${fontFamily.replace(/\s/g, '+')}&display=swap`;
     document.head.appendChild(link);
     setTimeout(() => {
       if (fabricCanvasRef.current) {
