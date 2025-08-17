@@ -757,27 +757,7 @@ const loadFont = useCallback((fontFamily: string) => {
         <canvas ref={canvasRef} />
       </div>
 
-      {/* Text Editor */}
-      {selectedObject && selectedObject.type === 'textbox' && (
-        <div className="mb-4 p-4 bg-gray-50 rounded">
-          <label className="block text-sm font-medium mb-2">Edit Text:</label>
-          <div className="flex gap-2">
-            <textarea
-              value={textInput}
-              onChange={(e) => setTextInput(e.target.value)}
-              rows={4}
-              placeholder="Edit text layer... (supports multiple lines)"
-              className="px-3 py-2 border rounded flex-1"
-            />
-            <button
-              onClick={updateSelectedText}
-              className="px-4 py-2 bg-blue-500 text-white rounded font-bold hover:bg-blue-600"
-            >
-              Apply
-            </button>
-          </div>
-        </div>
-      )}
+     
 
       {/* Layer Panel */}
       <div className="p-4 border border-gray-200 rounded bg-gray-50">
