@@ -389,18 +389,31 @@ const loadFont = useCallback((fontFamily: string) => {
   // Move layer up/down
   const moveLayer = useCallback((obj: fabric.Object, direction: 'up' | 'down') => {
     if (!fabricCanvasRef.current) return;
-
-    const canvas = fabricCanvasRef.current as any; // Type assertion to bypass TypeScript error
-    if (direction === 'up') {
-      canvas.bringForward(obj, true);
-    } else {
-      canvas.sendBackwards(obj, true);
+    const canvas = fabricCanvasRef.current;
+    const allObjs = canvas.getObjects();
+    const oldIndex = allObjs.indexOf(obj);
+    let newIndex = oldIndex;
+  
+    if (direction === 'up' && oldIndex < allObjs.length - 1) {
+      newIndex = oldIndex + 1;
+    } else if (direction === 'down' && oldIndex > 0) {
+      newIndex = oldIndex - 1;
     }
-
-    updateLayersList();
-    pushToUndoStack();
-    triggerAutosave();
+  
+    if (newIndex !== oldIndex) {
+      canvas.remove(obj);
+      canvas.insertAt(newIndex, obj);
+      canvas.setActiveObject(obj);
+      canvas.renderAll();
+      updateLayersList();
+      pushToUndoStack();
+      triggerAutosave();
+    }
   }, [pushToUndoStack, triggerAutosave, updateLayersList]);
+  
+  
+  
+  
 
   // Undo
   const undo = useCallback(() => {
