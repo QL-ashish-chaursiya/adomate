@@ -564,6 +564,10 @@ const loadFont = useCallback((fontFamily: string) => {
   }, [displayScale, originalImageDimensions]);
 
   const onFontSizeChange = (size: number) => {
+    if(size<15 || size>200){
+      alert("Plzease choose between 15-200")
+      return
+    }
     setFontSize(size);
     if (selectedObject && selectedObject.type === 'textbox') {
       (selectedObject as fabric.Textbox).set('fontSize', size);
@@ -658,8 +662,8 @@ const loadFont = useCallback((fontFamily: string) => {
 
         <input
           type="number"
-          min="10"
-          max="150"
+          min="15"
+          max="200"
           value={fontSize}
           onChange={(e) => onFontSizeChange(Number(e.target.value))}
           className="w-16 px-2 py-1 border rounded"
