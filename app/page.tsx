@@ -4,13 +4,7 @@ import React, { useEffect, useRef, useState, useCallback } from 'react';
 import * as fabric from 'fabric';
 import Select from 'react-select';
 
-// Google Fonts list (top 30)
-const FONT_LIST = [
-  'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald', 'Poppins', 'Merriweather', 'PT Sans',
-  'Noto Sans', 'Josefin Sans', 'Raleway', 'Quicksand', 'Bebas Neue', 'Nunito', 'Playfair Display',
-  'Source Sans Pro', 'Pacifico', 'Alfa Slab One', 'Abel', 'Anton', 'Bangers', 'Cabin', 'Dancing Script',
-  'Fjalla One', 'Indie Flower', 'Lobster', 'Rubik', 'Slabo 27px', 'Work Sans', 'Varela Round'
-].map(font => ({ value: font, label: font }));
+ 
 
 interface TextLayerState {
   id: string;
@@ -25,6 +19,10 @@ interface TextLayerState {
   top: number;
   angle: number;
 }
+interface FontOption {
+  value: string;
+  label: string;
+}
 
 interface ComposerState {
   layers: TextLayerState[];
@@ -37,7 +35,10 @@ const ImageTextComposer: React.FC = () => {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // State
-  const [selectedFont, setSelectedFont] = useState(FONT_LIST[0]);
+ 
+  const [fontList, setFontList] = useState<FontOption[]>([]); // Typed as FontOption[]
+  const [selectedFont, setSelectedFont] = useState<FontOption | null>(null);
+   const [loadingFonts, setLoadingFonts] = useState(true);
   const [fontSize, setFontSize] = useState(50);
   const [fontWeight, setFontWeight] = useState('400');
   const [textColor, setTextColor] = useState('#222222');
@@ -76,26 +77,42 @@ const ImageTextComposer: React.FC = () => {
     setTimeout(() => setAutosaveStatus(''), 1500);
   }, []);
 
-  // Load Google Font
-  const loadFont = useCallback((fontFamily: string) => {
-    const linkId = `fontLink_${fontFamily.replace(/\s/g, '')}`;
-    if (!document.getElementById(linkId)) {
-      const link = document.createElement('link');
-      link.rel = 'stylesheet';
-      link.id = linkId;
-      link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(
-        fontFamily.replace(/\s/g, '+')
-      )}:wght@300;400;700&display=swap`;
-      document.head.appendChild(link);
-      // Wait for font to load
-      setTimeout(() => {
-        if (fabricCanvasRef.current) {
-          fabricCanvasRef.current.renderAll();
-        }
-      }, 500); // Delay to ensure font is applied
-    }
-  }, []);
+   // Fetch all Google Fonts dynamically
+   useEffect(() => {
+    const fetchFonts = async () => {
+      try {
+        const response = await fetch('https://www.googleapis.com/webfonts/v1/webfonts?key=AIzaSyDFZUu9EnOeiUHiheJANCOTcbH_lYnnit8&sort=alpha');
+        const data = await response.json();
+        const fonts = data.items.map((font:any) => ({ value: font.family, label: font.family }));
+        setFontList(fonts);
+        setSelectedFont(fonts[0] || null); // Set default to first font
+        setLoadingFonts(false);
+      } catch (error) {
+        console.error('Failed to fetch Google Fonts:', error);
+        setLoadingFonts(false);
+      }
+    };
 
+    fetchFonts();
+  }, []);
+// Load Google Font
+const loadFont = useCallback((fontFamily: string) => {
+  const linkId = `fontLink_${fontFamily.replace(/\s/g, '')}`;
+  if (!document.getElementById(linkId)) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.id = linkId;
+    link.href = `https://fonts.googleapis.com/css2?family=${encodeURIComponent(
+      fontFamily.replace(/\s/g, '+')
+    )}:wght@300;400;700&display=swap`;
+    document.head.appendChild(link);
+    setTimeout(() => {
+      if (fabricCanvasRef.current) {
+        fabricCanvasRef.current.renderAll();
+      }
+    }, 200);
+  }
+}, []);
   // Update control values from selected object
   const updateControlsFromObject = useCallback((obj: fabric.Object) => {
     if (obj.type === 'textbox') {
@@ -317,12 +334,14 @@ const ImageTextComposer: React.FC = () => {
   const addTextLayer = useCallback(() => {
     if (!fabricCanvasRef.current) return;
 
-    loadFont(selectedFont.value);
+     if (selectedFont) {
+  loadFont(selectedFont.value);
+}
 
     const textObj = new fabric.Textbox('New text', {
       left: 100,
       top: 100,
-      fontFamily: selectedFont.value,
+      fontFamily: selectedFont?.value,
       fontSize: fontSize,
       fontWeight: fontWeight,
       fill: textColor,
@@ -352,7 +371,7 @@ const ImageTextComposer: React.FC = () => {
     const textObj = selectedObject as fabric.Textbox;
     textObj.set({
       text: textInput,
-      fontFamily: selectedFont.value,
+      fontFamily: selectedFont?.value,
       fontSize: fontSize,
       fontWeight: fontWeight,
       fill: textColor,
@@ -360,7 +379,9 @@ const ImageTextComposer: React.FC = () => {
       textAlign: textAlign as any
     });
 
-    loadFont(selectedFont.value);
+    if (selectedFont) {
+      loadFont(selectedFont.value);
+    }
     fabricCanvasRef.current?.renderAll();
     updateLayersList();
     pushToUndoStack();
@@ -626,11 +647,12 @@ const ImageTextComposer: React.FC = () => {
         </button>
 
         <Select
-          options={FONT_LIST}
+          options={fontList}
           value={selectedFont}
           onChange={onFontChange}
-          placeholder="Select a font"
+          placeholder={loadingFonts ? "Loading fonts..." : "Select a font"}
           isSearchable
+          isDisabled={loadingFonts}
           className="w-48"
         />
 
