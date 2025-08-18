@@ -1,11 +1,11 @@
-import { useState, useCallback, useEffect, useRef, RefObject } from 'react';
+/* eslint-disable @typescript-eslint/no-explicit-any */
+import { useState, useCallback, useEffect, RefObject } from 'react';
 import * as fabric from 'fabric';
 import { FontOption, ImageDimensions } from '../types';
 import {
   UNDO_STACK_LIMIT,
   AUTOSAVE_DELAY,
   LOCAL_STORAGE_KEYS,
-  CANVAS_CONFIG
 } from './constant';
 import {
   loadGoogleFont,
@@ -222,18 +222,9 @@ export const useLocalStorage = (canvasRef: RefObject<fabric.Canvas | null>) => {
 
     try {
       const parsed = typeof saved === 'string' ? JSON.parse(saved) : saved;
-      // canvas.loadFromJSON(parsed, () => {
-      //   canvas.getObjects().forEach((obj) => {
-      //     if (obj.type === 'textbox') {
-      //       loadGoogleFont((obj as fabric.Textbox).fontFamily || 'Roboto');
-      //     }
-      //   });
-      //   canvas.renderAll();
-      //   if (onDone) onDone(canvas);
-      // });
       canvas.loadFromJSON(parsed).then((canvas) => canvas.requestRenderAll());
+      if (onDone) onDone(canvas);
     } catch (err) {
-      // Swallow errors during HMR/reload if canvas was torn down
       console.error('restoreFromLocalStorage failed:', err);
     }
   }, [canvasRef]);

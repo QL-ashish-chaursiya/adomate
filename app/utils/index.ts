@@ -1,5 +1,5 @@
 import * as fabric from 'fabric';
-import { FontOption, ImageDimensions } from '../types';
+import { FontOption } from '../types';
 import { GOOGLE_FONTS_API_KEY, GOOGLE_FONTS_API_URL, CANVAS_CONFIG } from './constant';
 
 // Font utilities
