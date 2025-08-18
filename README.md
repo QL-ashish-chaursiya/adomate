@@ -60,3 +60,6 @@ Data and control flow: user actions in `Toolbar`/`LayerPanel` modify the Fabric 
 - Snapshot-based undo/redo; very large scenes can increase memory usage.
 - No backend persistence or collaboration; autosave is device-local.
 - Font loading depends on Google Fonts availability; brief flash/delay possible when switching fonts.
+
+## Live URL
+https://adomate.netlify.app/
