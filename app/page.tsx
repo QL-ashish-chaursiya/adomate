@@ -56,16 +56,25 @@ const ImageTextComposer: React.FC = () => {
   const maxWidth = 1100;
   const maxHeight = 600;
   // Push current state to undo stack
-  const pushToUndoStack = useCallback(() => {
-    if (!fabricCanvasRef.current) return;
+  // Push state (stringify only once at the very end)
+const pushToUndoStack = useCallback(() => {
+  if (!fabricCanvasRef.current) return;
 
-    const state = JSON.stringify(fabricCanvasRef.current.toJSON());
-    setUndoStack((prev) => {
-      const newStack = [...prev, state];
-      return newStack.slice(-20); // Keep only last 20 states
-    });
-    setRedoStack([]); // Clear redo stack
-  }, []);
+  const canvas = fabricCanvasRef.current;
+
+  const state = {
+    canvas: canvas.toJSON(), // keep as object
+    backgroundImage: canvas.backgroundImage?.toObject() || null,
+  };
+
+  setUndoStack((prev) => {
+    const newStack = [...prev, JSON.stringify(state)]; // stringify here
+    return newStack.slice(-20);
+  });
+
+  setRedoStack([]);
+}, []);
+
 
   // Autosave to localStorage
   const triggerAutosave = useCallback(() => {
@@ -142,28 +151,85 @@ const loadFont = useCallback((fontFamily: string) => {
     pushToUndoStack();
     triggerAutosave();
   }, [selectedObject, pushToUndoStack, triggerAutosave, updateLayersList]);
+   
+  // Load state (parse -> pass real object to Fabric)
+const loadState = useCallback((saved: string) => {
+  if (!fabricCanvasRef.current) return;
 
+  const parsed = JSON.parse(saved);
+  const { canvas: canvasJSON, backgroundImage } = parsed;
+
+  if (!canvasJSON) {
+    console.error("No canvas JSON found in saved state:", parsed);
+    return;
+  }
+
+  fabricCanvasRef.current.loadFromJSON(canvasJSON, () => {
+    if (backgroundImage) {
+      fabric.FabricImage.fromObject(backgroundImage).then((img: fabric.FabricImage) => {
+        fabricCanvasRef.current!.backgroundImage = img;
+        fabricCanvasRef.current!.renderAll();
+        setDisplayScale(img.scaleX || 1);
+      });
+    } else {
+      fabricCanvasRef.current!.backgroundImage = undefined;
+    }
+
+    // reload fonts
+    fabricCanvasRef.current!.getObjects().forEach((obj) => {
+      if (obj.type === "textbox") {
+        loadFont((obj as fabric.Textbox).fontFamily || "Roboto");
+      }
+    });
+
+    fabricCanvasRef.current!.renderAll();
+    updateLayersList();
+  });
+}, [loadFont, updateLayersList]);
+
+ 
+
+  
   // Restore from localStorage
   const restoreFromLocalStorage = useCallback(() => {
-    const saved = localStorage.getItem('composer_state');
-    if (saved && fabricCanvasRef.current) {
-      fabricCanvasRef.current.loadFromJSON(saved, () => {
-        fabricCanvasRef.current?.getObjects().forEach((obj) => {
-          if (obj.type === 'textbox') {
-            loadFont((obj as fabric.Textbox).fontFamily || 'Roboto');
-          }
-        });
-        fabricCanvasRef.current?.renderAll();
-        updateLayersList();
-        const bg = fabricCanvasRef.current?.backgroundImage as fabric.FabricImage | undefined;
-        if (bg) {
-          setDisplayScale(bg.scaleX || 1);
-          // Optionally, restore original dimensions if saved in state
-        }
-      });
-    }
-  }, [loadFont, updateLayersList]);
-
+    const saved = localStorage.getItem("composer_state");
+    if (saved) loadState(saved);
+  }, [loadState]);
+  const saveToLocalStorage = useCallback(() => {
+    if (!fabricCanvasRef.current) return;
+  
+    const canvas = fabricCanvasRef.current;
+  
+    const state = {
+      canvas: canvas.toJSON(),
+      backgroundImage: canvas.backgroundImage?.toObject() || null,
+    };
+  
+    localStorage.setItem("composer_state", JSON.stringify(state));
+  }, []);
+  
+  useEffect(() => {
+    if (!fabricCanvasRef.current) return;
+  
+    // restore once on mount
+    restoreFromLocalStorage();
+  
+    const canvas = fabricCanvasRef.current;
+  
+    const save = () => saveToLocalStorage();
+  
+    // auto-save whenever something changes
+    canvas.on("object:added", save);
+    canvas.on("object:modified", save);
+    canvas.on("object:removed", save);
+  
+    return () => {
+      canvas.off("object:added", save);
+      canvas.off("object:modified", save);
+      canvas.off("object:removed", save);
+    };
+  }, [restoreFromLocalStorage, saveToLocalStorage]);
+  
   // Initialize Fabric.js canvas
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -185,7 +251,7 @@ const loadFont = useCallback((fontFamily: string) => {
     canvas.on('selection:updated', (e: any) => {
       setSelectedObject(e.selected[0]);
       updateControlsFromObject(e.selected[0]);
-    });
+    });restoreFromLocalStorage
 
     canvas.on('selection:cleared', () => {
       setSelectedObject(null);
@@ -418,52 +484,28 @@ const loadFont = useCallback((fontFamily: string) => {
   // Undo
   const undo = useCallback(() => {
     if (undoStack.length <= 1 || !fabricCanvasRef.current) return;
-
+  
     const current = undoStack[undoStack.length - 1];
     const previous = undoStack[undoStack.length - 2];
-
+  
     setRedoStack((prev) => [...prev, current]);
     setUndoStack((prev) => prev.slice(0, -1));
-
-    fabricCanvasRef.current.loadFromJSON(previous, () => {
-      fabricCanvasRef.current?.getObjects().forEach((obj) => {
-        if (obj.type === 'textbox') {
-          loadFont((obj as fabric.Textbox).fontFamily || 'Roboto');
-        }
-      });
-      fabricCanvasRef.current?.renderAll();
-      updateLayersList();
-      const bg = fabricCanvasRef.current?.backgroundImage as fabric.FabricImage | undefined;
-      if (bg) {
-        setDisplayScale(bg.scaleX || 1);
-      }
-      triggerAutosave();
-    });
-  }, [undoStack, loadFont, updateLayersList, triggerAutosave]);
-
+  
+    loadState(previous);
+    triggerAutosave();
+  }, [undoStack, loadState, triggerAutosave]);
+  
   // Redo
   const redo = useCallback(() => {
     if (redoStack.length === 0 || !fabricCanvasRef.current) return;
-
+  
     const next = redoStack[redoStack.length - 1];
     setUndoStack((prev) => [...prev, next]);
     setRedoStack((prev) => prev.slice(0, -1));
-
-    fabricCanvasRef.current.loadFromJSON(next, () => {
-      fabricCanvasRef.current?.getObjects().forEach((obj) => {
-        if (obj.type === 'textbox') {
-          loadFont((obj as fabric.Textbox).fontFamily || 'Roboto');
-        }
-      });
-      fabricCanvasRef.current?.renderAll();
-      updateLayersList();
-      const bg = fabricCanvasRef.current?.backgroundImage as fabric.FabricImage | undefined;
-      if (bg) {
-        setDisplayScale(bg.scaleX || 1);
-      }
-      triggerAutosave();
-    });
-  }, [redoStack, loadFont, updateLayersList, triggerAutosave]);
+  
+    loadState(next);
+    triggerAutosave();
+  }, [redoStack, loadState, triggerAutosave]);
 
   // Reset canvas
   const resetCanvas = useCallback(() => {
