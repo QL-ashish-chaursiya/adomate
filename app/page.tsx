@@ -1,145 +1,75 @@
+/* eslint-disable @typescript-eslint/no-explicit-any */
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useRef, useState, useCallback } from 'react';
 import * as fabric from 'fabric';
-import Select from 'react-select';
-
- 
-
-interface TextLayerState {
-  id: string;
-  text: string;
-  fontFamily: string;
-  fontSize: number;
-  fontWeight: string;
-  fill: string;
-  opacity: number;
-  textAlign: string;
-  left: number;
-  top: number;
-  angle: number;
-}
-interface FontOption {
-  value: string;
-  label: string;
-}
-
-interface ComposerState {
-  layers: TextLayerState[];
-  backgroundImageUrl: string | null;
-}
+import Toolbar from './components/Toolbar';
+import ImageUpload from './components/ImageUpload';
+import Canvas from './components/Canvas';
+import LayerPanel from './components/LayerPanel';
+import { TextProperties, FontOption } from './types';
+import {
+  useGoogleFonts,
+  useUndoRedo,
+  useAutosave,
+  useCanvasState,
+  useKeyboardShortcuts,
+  useLocalStorage,
+  useHandleCanvasReady
+} from './utils/hook';
+import {
+  calculateImageScale,
+  createTextObject,
+  downloadCanvasAsPNG
+} from './utils';
+import { CANVAS_CONFIG } from './utils/constant';
 
 const ImageTextComposer: React.FC = () => {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricCanvasRef = useRef<fabric.Canvas | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // State
- 
-  const [fontList, setFontList] = useState<FontOption[]>([]); // Typed as FontOption[]
-  const [selectedFont, setSelectedFont] = useState<FontOption | null>(null);
-   const [loadingFonts, setLoadingFonts] = useState(true);
-  const [fontSize, setFontSize] = useState(50);
-  const [fontWeight, setFontWeight] = useState('400');
-  const [textColor, setTextColor] = useState('#222222');
-  const [textOpacity, setTextOpacity] = useState(1);
-  const [textAlign, setTextAlign] = useState('left');
-  const [textInput, setTextInput] = useState('');
-  const [selectedObject, setSelectedObject] = useState<fabric.Object | null>(null);
-  const [layers, setLayers] = useState<fabric.Object[]>([]);
-  const [undoStack, setUndoStack] = useState<string[]>([]);
-  const [redoStack, setRedoStack] = useState<string[]>([]);
-  const [autosaveStatus, setAutosaveStatus] = useState('');
-  const [displayScale, setDisplayScale] = useState(1);
-  // New state to store original image dimensions
-  const [originalImageDimensions, setOriginalImageDimensions] = useState<{ width: number; height: number } | null>(null);
-  const maxWidth = 1100;
-  const maxHeight = 600;
-  // Push current state to undo stack
-  // Push state (stringify only once at the very end)
-const pushToUndoStack = useCallback(() => {
-  if (!fabricCanvasRef.current) return;
+  // Custom hooks
+  const { fontList, selectedFont, setSelectedFont, loadingFonts, loadFont } = useGoogleFonts();
+  const { undoStack, redoStack, pushToUndoStack, undo, redo } = useUndoRedo(fabricCanvasRef.current);
+  const { autosaveStatus, triggerAutosave } = useAutosave(fabricCanvasRef.current);
+  const {
+    selectedObject,
+    setSelectedObject,
+    layers,
+    displayScale,
+    setDisplayScale,
+    originalImageDimensions,
+    setOriginalImageDimensions,
+    updateLayersList,
+    updateControlsFromObject
+  } = useCanvasState();
+  const { restoreFromLocalStorage, clearLocalStorage } = useLocalStorage(fabricCanvasRef);
 
-  const canvas = fabricCanvasRef.current;
-
-  const state = {
-    canvas: canvas.toJSON(), // keep as object
-    backgroundImage: canvas.backgroundImage?.toObject() || null,
-  };
-
-  setUndoStack((prev) => {
-    const newStack = [...prev, JSON.stringify(state)]; // stringify here
-    return newStack.slice(-20);
+  // Text properties state
+  const [textProperties, setTextProperties] = useState<TextProperties>({
+    fontFamily: 'Roboto',
+    fontSize: 50,
+    fontWeight: '400',
+    fill: '#222222',
+    opacity: 1,
+    textAlign: 'left'
   });
 
-  setRedoStack([]);
-}, []);
+  const [textInput, setTextInput] = useState('');
 
 
-  // Autosave to localStorage
-  const triggerAutosave = useCallback(() => {
-    if (!fabricCanvasRef.current) return;
 
-    const state = JSON.stringify(fabricCanvasRef.current.toJSON());
-    localStorage.setItem('composer_state', state);
-    setAutosaveStatus('Autosaved!');
-    setTimeout(() => setAutosaveStatus(''), 1500);
-  }, []);
-
-   // Fetch all Google Fonts dynamically
-   useEffect(() => {
-    const fetchFonts = async () => {
-      try {
-        const response = await fetch('https://www.googleapis.com/webfonts/v1/webfonts?key=AIzaSyDFZUu9EnOeiUHiheJANCOTcbH_lYnnit8&sort=alpha');
-        const data = await response.json();
-        const fonts = data.items.map((font:any) => ({ value: font.family, label: font.family }));
-        setFontList(fonts);
-        setSelectedFont(fonts[0] || null); // Set default to first font
-        setLoadingFonts(false);
-      } catch (error) {
-        console.error('Failed to fetch Google Fonts:', error);
-        setLoadingFonts(false);
-      }
-    };
-
-    fetchFonts();
-  }, []);
-// Load Google Font
-const loadFont = useCallback((fontFamily: string) => {
-  const linkId = `fontLink_${fontFamily.replace(/\s/g, '')}`;
-  if (!document.getElementById(linkId)) {
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.id = linkId;
-    link.href = `https://fonts.googleapis.com/css2?family=${fontFamily.replace(/\s/g, '+')}&display=swap`;
-    document.head.appendChild(link);
-    setTimeout(() => {
-      if (fabricCanvasRef.current) {
-        fabricCanvasRef.current.renderAll();
-      }
-    }, 200);
-  }
-}, []);
-  // Update control values from selected object
-  const updateControlsFromObject = useCallback((obj: fabric.Object) => {
-    if (obj.type === 'textbox') {
-      const textObj = obj as fabric.Textbox;
-      setSelectedFont({ value: textObj.fontFamily || 'Roboto', label: textObj.fontFamily || 'Roboto' });
-      setFontSize(textObj.fontSize || 50);
-      setFontWeight(textObj.fontWeight?.toString() || '400');
-      setTextColor(textObj.fill?.toString() || '#222222');
-      setTextOpacity(textObj.opacity || 1);
-      setTextAlign(textObj.textAlign || 'left');
-      setTextInput(textObj.text || '');
-    }
-  }, []);
-
-  // Update layers list
-  const updateLayersList = useCallback(() => {
-    if (fabricCanvasRef.current) {
-      setLayers([...fabricCanvasRef.current.getObjects()]);
-    }
-  }, []);
+  const handleCanvasReady = useHandleCanvasReady({
+    fabricCanvasRef,
+    setSelectedObject,
+    updateControlsFromObject,
+    setTextProperties,
+    setTextInput,
+    pushToUndoStack,
+    triggerAutosave,
+    restoreFromLocalStorage,
+    setDisplayScale,
+    setOriginalImageDimensions,
+  });
 
   // Delete selected layer
   const deleteSelectedLayer = useCallback(() => {
@@ -147,239 +77,83 @@ const loadFont = useCallback((fontFamily: string) => {
 
     fabricCanvasRef.current.remove(selectedObject);
     setSelectedObject(null);
-    updateLayersList();
+    updateLayersList(fabricCanvasRef.current);
     pushToUndoStack();
     triggerAutosave();
-  }, [selectedObject, pushToUndoStack, triggerAutosave, updateLayersList]);
-   
-  // Load state (parse -> pass real object to Fabric)
-const loadState = useCallback((saved: string) => {
-  if (!fabricCanvasRef.current) return;
+  }, [selectedObject, setSelectedObject, updateLayersList, pushToUndoStack, triggerAutosave]);
 
-  const parsed = JSON.parse(saved);
-  const { canvas: canvasJSON, backgroundImage } = parsed;
+  // Keyboard shortcuts
+  useKeyboardShortcuts(
+    selectedObject,
+    fabricCanvasRef.current,
+    deleteSelectedLayer,
+    undo,
+    redo
+  );
 
-  if (!canvasJSON) {
-    console.error("No canvas JSON found in saved state:", parsed);
-    return;
-  }
+  // Text property change handler
+  const handleTextPropertyChange = useCallback((property: keyof TextProperties, value: string | number) => {
+    setTextProperties(prev => ({ ...prev, [property]: value }));
 
-  fabricCanvasRef.current.loadFromJSON(canvasJSON, () => {
-    if (backgroundImage) {
-      fabric.FabricImage.fromObject(backgroundImage).then((img: fabric.FabricImage) => {
-        fabricCanvasRef.current!.backgroundImage = img;
-        fabricCanvasRef.current!.renderAll();
-        setDisplayScale(img.scaleX || 1);
-      });
-    } else {
-      fabricCanvasRef.current!.backgroundImage = undefined;
-    }
+    if (selectedObject && selectedObject.type === 'textbox') {
+      const textObj = selectedObject as fabric.Textbox;
+      textObj.set(property, value);
 
-    // reload fonts
-    fabricCanvasRef.current!.getObjects().forEach((obj) => {
-      if (obj.type === "textbox") {
-        loadFont((obj as fabric.Textbox).fontFamily || "Roboto");
+      if (property === 'fontFamily' && selectedFont) {
+        loadFont(selectedFont.value);
       }
-    });
 
-    fabricCanvasRef.current!.renderAll();
-    updateLayersList();
-  });
-}, [loadFont, updateLayersList]);
-
- 
-
-  
-  // Restore from localStorage
-  const restoreFromLocalStorage = useCallback(() => {
-    const saved = localStorage.getItem("composer_state");
-    if (saved) loadState(saved);
-  }, [loadState]);
-  const saveToLocalStorage = useCallback(() => {
-    if (!fabricCanvasRef.current) return;
-  
-    const canvas = fabricCanvasRef.current;
-  
-    const state = {
-      canvas: canvas.toJSON(),
-      backgroundImage: canvas.backgroundImage?.toObject() || null,
-    };
-  
-    localStorage.setItem("composer_state", JSON.stringify(state));
-  }, []);
-  
-  useEffect(() => {
-    if (!fabricCanvasRef.current) return;
-  
-    // restore once on mount
-    restoreFromLocalStorage();
-  
-    const canvas = fabricCanvasRef.current;
-  
-    const save = () => saveToLocalStorage();
-  
-    // auto-save whenever something changes
-    canvas.on("object:added", save);
-    canvas.on("object:modified", save);
-    canvas.on("object:removed", save);
-  
-    return () => {
-      canvas.off("object:added", save);
-      canvas.off("object:modified", save);
-      canvas.off("object:removed", save);
-    };
-  }, [restoreFromLocalStorage, saveToLocalStorage]);
-  
-  // Initialize Fabric.js canvas
-  useEffect(() => {
-    if (!canvasRef.current) return;
-
-    const canvas = new fabric.Canvas(canvasRef.current, {
-      width:maxWidth,
-      height:  maxHeight,
-      backgroundColor: '#ffffff'
-    });
-
-    fabricCanvasRef.current = canvas;
-
-    // Canvas event listeners
-    canvas.on('selection:created', (e: any) => {
-      setSelectedObject(e.selected[0]);
-      updateControlsFromObject(e.selected[0]);
-    });
-
-    canvas.on('selection:updated', (e: any) => {
-      setSelectedObject(e.selected[0]);
-      updateControlsFromObject(e.selected[0]);
-    });restoreFromLocalStorage
-
-    canvas.on('selection:cleared', () => {
-      setSelectedObject(null);
-      setTextInput('');
-    });
-
-    canvas.on('object:modified', () => {
+      fabricCanvasRef.current?.requestRenderAll();
       pushToUndoStack();
       triggerAutosave();
-    });
-
-    // Snap to center
-    canvas.on('object:moving', (e: any) => {
-      const obj = e.target;
-      if (!obj) return;
-
-      const centerX = canvas.width! / 2;
-      const centerY = canvas.height! / 2;
-      const objCenterX = obj.left! + obj.getScaledWidth() / 2;
-      const objCenterY = obj.top! + obj.getScaledHeight() / 2;
-      const threshold = 10;
-
-      if (Math.abs(objCenterX - centerX) < threshold) {
-        obj.left = centerX - obj.getScaledWidth() / 2;
-      }
-      if (Math.abs(objCenterY - centerY) < threshold) {
-        obj.top = centerY - obj.getScaledHeight() / 2;
-      }
-    });
-
-    // Load initial state
-    restoreFromLocalStorage();
-
-    return () => {
-      canvas.dispose();
-    };
-  }, [restoreFromLocalStorage, updateControlsFromObject, pushToUndoStack, triggerAutosave]);
-
-  // Keyboard nudge and delete
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (!selectedObject || !fabricCanvasRef.current) return;
-
-      if (e.key === 'Delete') {
-        deleteSelectedLayer();
-        e.preventDefault();
-        return;
-      }
-
-      const delta = e.shiftKey ? 10 : 1;
-      let moved = false;
-
-      switch (e.key) {
-        case 'ArrowLeft':
-          selectedObject.left! -= delta;
-          moved = true;
-          break;
-        case 'ArrowRight':
-          selectedObject.left! += delta;
-          moved = true;
-          break;
-        case 'ArrowUp':
-          selectedObject.top! -= delta;
-          moved = true;
-          break;
-        case 'ArrowDown':
-          selectedObject.top! += delta;
-          moved = true;
-          break;
-        default:
-          return;
-      }
-
-      if (moved) {
-        selectedObject.setCoords();
-        fabricCanvasRef.current.renderAll();
-        pushToUndoStack();
-        triggerAutosave();
-        e.preventDefault();
-      }
-    };
-
-    document.addEventListener('keydown', handleKeyDown);
-    return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [selectedObject, pushToUndoStack, triggerAutosave, deleteSelectedLayer]);
-  const MAX_IMAGE_SIZE_MB = 4; // 4MB max
-  const MAX_IMAGE_SIZE_BYTES = MAX_IMAGE_SIZE_MB * 1024 * 1024;
-  // Handle image upload
-  const handleImageUpload = useCallback((event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0];
-    
-    if (!file || file.type !== 'image/png') {
-      alert('Please select a valid PNG image file under 4MB.');
-      // Reset the input to clear file name
-      if (event.target.value) event.target.value = '';
-      return;
     }
-    if (file.size > MAX_IMAGE_SIZE_BYTES) {
-      alert('Image exceeds 4MB. Please choose a smaller PNG.');
-      if (event.target.value) event.target.value = '';
-      return;
-    }
+  }, [selectedObject, selectedFont, loadFont, pushToUndoStack, triggerAutosave]);
 
+  // Font change handler
+  const handleFontChange = useCallback((option: FontOption | null) => {
+    if (!option) return;
+    setSelectedFont(option);
+    handleTextPropertyChange('fontFamily', option.value);
+  }, [setSelectedFont, handleTextPropertyChange]);
+
+  // Text input change handler
+  const handleTextInputChange = useCallback((text: string) => {
+    setTextInput(text);
+
+    if (selectedObject && selectedObject.type === 'textbox') {
+      const textObj = selectedObject as fabric.Textbox;
+      textObj.set('text', text);
+      fabricCanvasRef.current?.requestRenderAll();
+      pushToUndoStack();
+      triggerAutosave();
+    }
+  }, [selectedObject, pushToUndoStack, triggerAutosave]);
+
+  // Image upload handler
+  const handleImageUpload = useCallback((file: File) => {
     const reader = new FileReader();
     reader.onload = (e) => {
       const imgUrl = e.target?.result as string;
-      fabric.FabricImage.fromURL(imgUrl).then((img: fabric.FabricImage) => {
+      const ImageClass = (fabric as any).FabricImage ?? (fabric as any).Image;
+      ImageClass.fromURL(imgUrl).then((img: fabric.Image) => {
         if (!fabricCanvasRef.current) return;
 
         const canvas = fabricCanvasRef.current;
         const origWidth = img.width!;
         const origHeight = img.height!;
-        
-        const scale = Math.min(maxWidth / origWidth, maxHeight / origHeight, 1);
 
-        // Store original dimensions
+        const scale = calculateImageScale(origWidth, origHeight);
+
         setOriginalImageDimensions({ width: origWidth, height: origHeight });
-
-        canvas.setWidth(origWidth * scale);
-        canvas.setHeight(origHeight * scale);
+        canvas.setDimensions({ width: origWidth * scale, height: origHeight * scale });
 
         img.set({
-          scaleX: scale,
-          scaleY: scale,
           left: 0,
           top: 0,
           originX: 'left',
           originY: 'top',
+          scaleX: scale,
+          scaleY: scale,
           selectable: false,
           evented: false,
         });
@@ -392,159 +166,81 @@ const loadState = useCallback((saved: string) => {
       });
     };
     reader.readAsDataURL(file);
-  }, [pushToUndoStack, triggerAutosave]);
+  }, [pushToUndoStack, triggerAutosave, setDisplayScale, setOriginalImageDimensions]);
 
-  // Add new text layer
+  // Add text layer
   const addTextLayer = useCallback(() => {
     if (!fabricCanvasRef.current) return;
 
-     if (selectedFont) {
-  loadFont(selectedFont.value);
-}
+    if (selectedFont) {
+      loadFont(selectedFont.value);
+    }
 
-    const textObj = new fabric.Textbox('New text', {
-      left: 100,
-      top: 100,
-      fontFamily: selectedFont?.value,
-      fontSize: fontSize,
-      fontWeight: fontWeight,
-      fill: textColor,
-      opacity: textOpacity,
-      textAlign: textAlign as any,
-      editable: true,
-      selectable: true,
-      evented: true,
-      hasControls: true,
-      lockScalingFlip: true,
-      objectCaching: false,
+    const textObj = createTextObject('New text', {
+      ...textProperties,
+      fontFamily: selectedFont?.value || 'Roboto'
     });
 
     fabricCanvasRef.current.add(textObj);
     fabricCanvasRef.current.setActiveObject(textObj);
     fabricCanvasRef.current.requestRenderAll();
 
-    updateLayersList();
+    updateLayersList(fabricCanvasRef.current);
     pushToUndoStack();
     triggerAutosave();
-  }, [selectedFont, fontSize, fontWeight, textColor, textOpacity, textAlign, loadFont, pushToUndoStack, triggerAutosave, updateLayersList]);
+  }, [selectedFont, textProperties, loadFont, updateLayersList, pushToUndoStack, triggerAutosave]);
 
-  // Update selected text object
-  const updateSelectedText = useCallback(() => {
-    if (!selectedObject || selectedObject.type !== 'textbox') return;
-
-    const textObj = selectedObject as fabric.Textbox;
-    textObj.set({
-      text: textInput,
-      fontFamily: selectedFont?.value,
-      fontSize: fontSize,
-      fontWeight: fontWeight,
-      fill: textColor,
-      opacity: textOpacity,
-      textAlign: textAlign as any
-    });
-
-    if (selectedFont) {
-      loadFont(selectedFont.value);
-    }
-    fabricCanvasRef.current?.renderAll();
-    updateLayersList();
-    pushToUndoStack();
-    triggerAutosave();
-  }, [selectedObject, textInput, selectedFont, fontSize, fontWeight, textColor, textOpacity, textAlign, loadFont, pushToUndoStack, triggerAutosave, updateLayersList]);
-
-  // Move layer up/down
+  // Move layer
   const moveLayer = useCallback((obj: fabric.Object, direction: 'up' | 'down') => {
     if (!fabricCanvasRef.current) return;
+
     const canvas = fabricCanvasRef.current;
     const allObjs = canvas.getObjects();
     const oldIndex = allObjs.indexOf(obj);
     let newIndex = oldIndex;
-  
+
     if (direction === 'up' && oldIndex < allObjs.length - 1) {
       newIndex = oldIndex + 1;
     } else if (direction === 'down' && oldIndex > 0) {
       newIndex = oldIndex - 1;
     }
-  
+
     if (newIndex !== oldIndex) {
       canvas.remove(obj);
       canvas.insertAt(newIndex, obj);
       canvas.setActiveObject(obj);
       canvas.renderAll();
-      updateLayersList();
+      updateLayersList(canvas);
       pushToUndoStack();
       triggerAutosave();
     }
   }, [pushToUndoStack, triggerAutosave, updateLayersList]);
-  
-  
-  
-  
-
-  // Undo
-  const undo = useCallback(() => {
-    if (undoStack.length <= 1 || !fabricCanvasRef.current) return;
-  
-    const current = undoStack[undoStack.length - 1];
-    const previous = undoStack[undoStack.length - 2];
-  
-    setRedoStack((prev) => [...prev, current]);
-    setUndoStack((prev) => prev.slice(0, -1));
-  
-    loadState(previous);
-    triggerAutosave();
-  }, [undoStack, loadState, triggerAutosave]);
-  
-  // Redo
-  const redo = useCallback(() => {
-    if (redoStack.length === 0 || !fabricCanvasRef.current) return;
-  
-    const next = redoStack[redoStack.length - 1];
-    setUndoStack((prev) => [...prev, next]);
-    setRedoStack((prev) => prev.slice(0, -1));
-  
-    loadState(next);
-    triggerAutosave();
-  }, [redoStack, loadState, triggerAutosave]);
 
   // Reset canvas
   const resetCanvas = useCallback(() => {
     if (!confirm('Reset and clear all content?')) return;
 
     if (fabricCanvasRef.current) {
-      fabricCanvasRef.current.clear();
-      fabricCanvasRef.current.backgroundImage = undefined; // Fixed assignment
-      fabricCanvasRef.current.setWidth(maxWidth);
-      fabricCanvasRef.current.setHeight(maxHeight);
-      fabricCanvasRef.current.renderAll();
+      const canvas = fabricCanvasRef.current;
+      canvas.clear();
+      canvas.backgroundImage = null as unknown as fabric.Image;
+      canvas.setDimensions({ width: CANVAS_CONFIG.maxWidth, height: CANVAS_CONFIG.maxHeight });
+      canvas.renderAll();
     }
 
-    localStorage.removeItem('composer_state');
-    setLayers([]);
+    clearLocalStorage();
+    updateLayersList(fabricCanvasRef.current);
     setSelectedObject(null);
-    setUndoStack([]);
-    setRedoStack([]);
     setDisplayScale(1);
-    setOriginalImageDimensions(null); // Reset original dimensions
-    updateLayersList();
-  }, [updateLayersList]);
+    setOriginalImageDimensions(null);
+  }, [clearLocalStorage, updateLayersList, setSelectedObject, setDisplayScale, setOriginalImageDimensions]);
 
-  // Export as PNG
+  // Export to PNG
   const exportToPNG = useCallback(() => {
     if (!fabricCanvasRef.current) return;
 
-    // If no background image is set, use default canvas dimensions
     if (!originalImageDimensions) {
-      const dataURL = fabricCanvasRef.current.toDataURL({
-        format: 'png',
-        quality: 1.0,
-        multiplier: 1
-      });
-
-      const link = document.createElement('a');
-      link.download = 'composition.png';
-      link.href = dataURL;
-      link.click();
+      downloadCanvasAsPNG(fabricCanvasRef.current);
       return;
     }
 
@@ -552,17 +248,12 @@ const loadState = useCallback((saved: string) => {
     const canvas = fabricCanvasRef.current;
     const currentWidth = canvas.getWidth();
     const currentHeight = canvas.getHeight();
-    const currentBackground = canvas.backgroundImage as fabric.FabricImage | undefined;
+    const currentBackground = canvas.backgroundImage as fabric.Image | undefined;
 
-    // Scale canvas and objects to original dimensions
-    canvas.setWidth(originalImageDimensions.width);
-    canvas.setHeight(originalImageDimensions.height);
+    canvas.setDimensions({ width: originalImageDimensions.width, height: originalImageDimensions.height });
 
     if (currentBackground) {
-      currentBackground.set({
-        scaleX: 1,
-        scaleY: 1
-      });
+      currentBackground.set({ scaleX: 1, scaleY: 1 });
     }
 
     // Adjust text objects to maintain their relative size
@@ -578,30 +269,14 @@ const loadState = useCallback((saved: string) => {
     });
 
     canvas.renderAll();
-
-    // Export at original dimensions
-    const dataURL = canvas.toDataURL({
-      format: 'png',
-      quality: 1.0,
-      multiplier: 1 // No scaling needed as canvas is set to original dimensions
-    });
-
-    const link = document.createElement('a');
-    link.download = 'composition.png';
-    link.href = dataURL;
-    link.click();
+    downloadCanvasAsPNG(canvas);
 
     // Restore canvas to display dimensions
-    canvas.setWidth(currentWidth);
-    canvas.setHeight(currentHeight);
+    canvas.setDimensions({ width: currentWidth, height: currentHeight });
     if (currentBackground) {
-      currentBackground.set({
-        scaleX: displayScale,
-        scaleY: displayScale
-      });
+      currentBackground.set({ scaleX: displayScale, scaleY: displayScale });
     }
 
-    // Restore text objects
     canvas.getObjects().forEach((obj) => {
       if (obj.type === 'textbox') {
         const textObj = obj as fabric.Textbox;
@@ -616,256 +291,67 @@ const loadState = useCallback((saved: string) => {
     canvas.renderAll();
   }, [displayScale, originalImageDimensions]);
 
-  const onFontSizeChange = (size: number) => {
-    if(size<15 || size>200){
-      alert("Plzease choose between 15-200")
-      return
-    }
-    setFontSize(size);
-    if (selectedObject && selectedObject.type === 'textbox') {
-      (selectedObject as fabric.Textbox).set('fontSize', size);
-      fabricCanvasRef.current?.requestRenderAll();
-      pushToUndoStack();
-      triggerAutosave();
-    }
-  };
-
-  const onFontWeightChange = (weight: string) => {
-    setFontWeight(weight);
-    if (selectedObject && selectedObject.type === 'textbox') {
-      (selectedObject as fabric.Textbox).set('fontWeight', weight);
-      fabricCanvasRef.current?.requestRenderAll();
-      pushToUndoStack();
-      triggerAutosave();
-    }
-  };
-
-  const onFontChange = (option: any) => {
-    if (!option) return;
-    setSelectedFont(option);
-    if (selectedObject && selectedObject.type === 'textbox') {
-      (selectedObject as fabric.Textbox).set('fontFamily', option.value);
-      loadFont(option.value);
-      fabricCanvasRef.current?.requestRenderAll();
-      pushToUndoStack();
-      triggerAutosave();
-    }
-  };
-
-  const onColorChange = (color: string) => {
-    setTextColor(color);
-    if (selectedObject && selectedObject.type === 'textbox') {
-      (selectedObject as fabric.Textbox).set('fill', color);
-      fabricCanvasRef.current?.requestRenderAll();
-      pushToUndoStack();
-      triggerAutosave();
-    }
-  };
-
-  const onOpacityChange = (opacity: number) => {
-    setTextOpacity(opacity);
-    if (selectedObject && selectedObject.type === 'textbox') {
-      selectedObject.set('opacity', opacity);
-      fabricCanvasRef.current?.requestRenderAll();
-      pushToUndoStack();
-      triggerAutosave();
-    }
-  };
-
-  const onTextAlignChange = (align: string) => {
-    setTextAlign(align);
-    if (selectedObject && selectedObject.type === 'textbox') {
-      (selectedObject as fabric.Textbox).set('textAlign', align as any);
-      fabricCanvasRef.current?.requestRenderAll();
-      pushToUndoStack();
-      triggerAutosave();
-    }
-  };
+  // Layer selection handler
+  const handleLayerSelect = useCallback((layer: fabric.Object) => {
+    fabricCanvasRef.current?.setActiveObject(layer);
+    fabricCanvasRef.current?.renderAll();
+  }, []);
 
   return (
-    <div className="max-w-6xl mx-auto p-6 bg-white rounded-lg shadow-lg">
+    <div className="p-6 bg-white rounded-lg shadow-lg">
       <h1 className="text-3xl font-bold text-center mb-6">Image Text Composer</h1>
 
-      {/* Toolbar */}
-      <div className="flex flex-wrap gap-2 mb-4 p-4 bg-gray-50 rounded">
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept="image/png"
-          onChange={handleImageUpload}
-          className="text-sm"
-        />
-
-        <button
-          onClick={addTextLayer}
-          className="px-4 py-2 bg-blue-500 text-white rounded font-bold hover:bg-blue-600"
-        >
-          Add Text
-        </button>
-
-        <Select
-          options={fontList}
-          value={selectedFont}
-          onChange={onFontChange}
-          placeholder={loadingFonts ? "Loading fonts..." : "Select a font"}
-          isSearchable
-          isDisabled={loadingFonts}
-          className="w-48"
-        />
-
-        <input
-          type="number"
-          min="15"
-          max="200"
-          value={fontSize}
-          onChange={(e) => onFontSizeChange(Number(e.target.value))}
-          className="w-16 px-2 py-1 border rounded"
-        />
-
-        <select
-          value={fontWeight}
-          onChange={(e) => onFontWeightChange(e.target.value)}
-          className="px-2 py-1 border rounded"
-        >
-          <option value="300">Light</option>
-          <option value="400">Normal</option>
-          <option value="700">Bold</option>
-        </select>
-
-        <input
-          type="color"
-          value={textColor}
-          onChange={(e) => onColorChange(e.target.value)}
-          className="w-12 h-8 border rounded"
-        />
-
-        <input
-          type="range"
-          min="0.1"
-          max="1"
-          step="0.05"
-          value={textOpacity}
-          onChange={(e) => onOpacityChange(Number(e.target.value))}
-          className="w-20"
-        />
-
-        <select
-          value={textAlign}
-          onChange={(e) => onTextAlignChange(e.target.value)}
-          className="px-2 py-1 border rounded"
-        >
-          <option value="left">Left</option>
-          <option value="center">Center</option>
-          <option value="right">Right</option>
-        </select>
-
-        <button
-          onClick={undo}
-          disabled={undoStack.length <= 1}
-          className="px-3 py-1 bg-gray-500 text-white rounded font-bold disabled:opacity-50"
-        >
-          Undo
-        </button>
-
-        <button
-          onClick={redo}
-          disabled={redoStack.length === 0}
-          className="px-3 py-1 bg-gray-500 text-white rounded font-bold disabled:opacity-50"
-        >
-          Redo
-        </button>
-
-        <button
-          onClick={resetCanvas}
-          className="px-3 py-1 bg-red-500 text-white rounded font-bold hover:bg-red-600"
-        >
-          Reset
-        </button>
-
-        <button
-          onClick={exportToPNG}
-          className="px-3 py-1 bg-green-500 text-white rounded font-bold hover:bg-green-600"
-        >
-          Export PNG
-        </button>
-
-        {autosaveStatus && (
-          <span className="text-green-600 text-sm font-medium ml-4">{autosaveStatus}</span>
-        )}
-      </div>
-
-      {/* Canvas */}
-      <div className="border-2 border-gray-300 rounded mb-4 inline-block">
-        <canvas ref={canvasRef} />
-      </div>
-
-     
-
-      {/* Layer Panel */}
-      <div className="p-4 border border-gray-200 rounded bg-gray-50">
-        <h3 className="font-bold mb-2">Layers ({layers.length})</h3>
-        {layers.length === 0 ? (
-          <p className="text-gray-500 text-sm">No layers yet. Add some text!</p>
-        ) : (
-          <div className="space-y-2">
-            {layers.slice().reverse().map((obj, idx) => {
-              const actualIdx = layers.length - 1 - idx;
-              const isActive = obj === selectedObject;
-              const text = obj.type === 'textbox' 
-                ? (obj as fabric.Textbox).text 
-                : obj.type === 'image' ? 'Background Image' : 'Layer';
-
-              return (
-                <div
-                  key={actualIdx}
-                  className={`flex items-center gap-2 p-2 rounded cursor-pointer ${
-                    isActive ? 'bg-blue-100 border border-blue-300' : 'bg-white border border-gray-200'
-                  }`}
-                  onClick={() => {
-                    fabricCanvasRef.current?.setActiveObject(obj);
-                    fabricCanvasRef.current?.renderAll();
-                  }}
-                >
-                  <span className="text-sm text-gray-600 min-w-6">{actualIdx + 1}</span>
-                  <span className="text-sm flex-1 truncate">{text || 'Layer'}</span>
-
-                  {obj.type === 'textbox' && (
-                    <>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); moveLayer(obj, 'up'); }}
-                        disabled={actualIdx === layers.length - 1}
-                        className="px-2 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50"
-                      >
-                        ▲
-                      </button>
-                      <button
-                        onClick={(e) => { e.stopPropagation(); moveLayer(obj, 'down'); }}
-                        disabled={actualIdx === 0}
-                        className="px-2 py-1 text-xs bg-gray-200 rounded hover:bg-gray-300 disabled:opacity-50"
-                      >
-                        ▼
-                      </button>
-                      <button
-                        onClick={(e) => { 
-                          e.stopPropagation(); 
-                          if (obj === selectedObject) deleteSelectedLayer();
-                        }}
-                        className="px-2 py-1 text-xs bg-red-200 text-red-700 rounded hover:bg-red-300"
-                      >
-                        ✖
-                      </button>
-                    </>
-                  )}
-                </div>
-              );
-            })}
+      {/* Image Upload */}
+      <div className='flex gap-2'>
+        <div>
+          <div className="mb-4">
+            <ImageUpload onImageUpload={handleImageUpload} />
           </div>
-        )}
-      </div>
 
-      {/* History Info */}
-      <div className="mt-4 text-sm text-gray-600">
-        Undo steps: {undoStack.length}, Redo steps: {redoStack.length}
+          {/* Toolbar */}
+          <Toolbar
+            fontList={fontList}
+            selectedFont={selectedFont}
+            onFontChange={handleFontChange}
+            loadingFonts={loadingFonts}
+            textProperties={textProperties}
+            onTextPropertyChange={handleTextPropertyChange}
+            textInput={textInput}
+            onTextInputChange={handleTextInputChange}
+            onAddText={addTextLayer}
+            onUndo={undo}
+            onRedo={redo}
+            onReset={resetCanvas}
+            onExport={exportToPNG}
+            undoStackLength={undoStack.length}
+            redoStackLength={redoStack.length}
+            autosaveStatus={autosaveStatus}
+          />
+        </div>
+
+        {/* Canvas */}
+        <Canvas onCanvasReady={handleCanvasReady} />
+
+        <div className='w-xs'>
+          <div className='mb-4'>
+
+            <span className="text-green-600 text-sm font-medium ml-4 flex items-center">
+              {autosaveStatus ? 'Autosaved' : 'Autosaving...'}
+            </span>
+
+          </div>
+          <LayerPanel
+            layers={layers}
+            selectedObject={selectedObject}
+            onLayerSelect={handleLayerSelect}
+            onLayerMove={moveLayer}
+            onLayerDelete={deleteSelectedLayer}
+          />
+
+          <div className="mt-4 text-sm text-gray-600">
+            Undo steps: {undoStack.length}, Redo steps: {redoStack.length}
+          </div>
+        </div>
       </div>
     </div>
   );
