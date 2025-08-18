@@ -55,7 +55,7 @@ const ImageTextComposer: React.FC = () => {
 
   const [textInput, setTextInput] = useState('');
 
-  
+
 
   const handleCanvasReady = useHandleCanvasReady({
     fabricCanvasRef,
@@ -219,13 +219,13 @@ const ImageTextComposer: React.FC = () => {
   const resetCanvas = useCallback(() => {
     if (!confirm('Reset and clear all content?')) return;
 
-          if (fabricCanvasRef.current) {
-        const canvas = fabricCanvasRef.current;
-        canvas.clear();
-        canvas.backgroundImage = null as unknown as fabric.Image;
-        canvas.setDimensions({ width: CANVAS_CONFIG.maxWidth, height: CANVAS_CONFIG.maxHeight });
-        canvas.renderAll();
-      }
+    if (fabricCanvasRef.current) {
+      const canvas = fabricCanvasRef.current;
+      canvas.clear();
+      canvas.backgroundImage = null as unknown as fabric.Image;
+      canvas.setDimensions({ width: CANVAS_CONFIG.maxWidth, height: CANVAS_CONFIG.maxHeight });
+      canvas.renderAll();
+    }
 
     clearLocalStorage();
     updateLayersList(fabricCanvasRef.current);
@@ -332,6 +332,13 @@ const ImageTextComposer: React.FC = () => {
         <Canvas onCanvasReady={handleCanvasReady} />
 
         <div className='w-xs'>
+          <div className='mb-4'>
+
+            <span className="text-green-600 text-sm font-medium ml-4 flex items-center">
+              {autosaveStatus ? 'Autosaved' : 'Autosaving...'}
+            </span>
+
+          </div>
           <LayerPanel
             layers={layers}
             selectedObject={selectedObject}

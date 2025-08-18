@@ -51,58 +51,35 @@ export const useUndoRedo = (canvas: fabric.Canvas | null) => {
 
   const pushToUndoStack = useCallback(() => {
     if (!canvas) return;
-
     const state = JSON.stringify(canvas.toJSON());
     setUndoStack((prev) => {
       const newStack = [...prev, state];
-      return newStack.slice(-UNDO_STACK_LIMIT);
+      return newStack.slice(-UNDO_STACK_LIMIT); // keep last N states
     });
-    setRedoStack([]);
+    setRedoStack([]); // clear redo history
   }, [canvas]);
 
   const undo = useCallback(() => {
-    if (undoStack.length <= 1 || !canvas) return;
+    if (!canvas || undoStack.length <= 1) return;
 
     const current = undoStack[undoStack.length - 1];
     const previous = undoStack[undoStack.length - 2];
 
     setRedoStack((prev) => [...prev, current]);
     setUndoStack((prev) => prev.slice(0, -1));
-
-    canvas.loadFromJSON(previous, () => {
-      canvas.getObjects().forEach((obj) => {
-        if (obj.type === 'textbox') {
-          loadGoogleFont((obj as fabric.Textbox).fontFamily || 'Roboto');
-        }
-      });
-      canvas.renderAll();
-    });
+    canvas.loadFromJSON(previous).then((canvas) => canvas.requestRenderAll());
   }, [undoStack, canvas]);
 
   const redo = useCallback(() => {
-    if (redoStack.length === 0 || !canvas) return;
+    if (!canvas || redoStack.length === 0) return;
 
     const next = redoStack[redoStack.length - 1];
     setUndoStack((prev) => [...prev, next]);
     setRedoStack((prev) => prev.slice(0, -1));
-
-    canvas.loadFromJSON(next, () => {
-      canvas.getObjects().forEach((obj) => {
-        if (obj.type === 'textbox') {
-          loadGoogleFont((obj as fabric.Textbox).fontFamily || 'Roboto');
-        }
-      });
-      canvas.renderAll();
-    });
+    canvas.loadFromJSON(next).then((canvas) => canvas.requestRenderAll());
   }, [redoStack, canvas]);
 
-  return {
-    undoStack,
-    redoStack,
-    pushToUndoStack,
-    undo,
-    redo
-  };
+  return { undoStack, redoStack, pushToUndoStack, undo, redo };
 };
 
 // Hook for managing autosave functionality
@@ -245,15 +222,16 @@ export const useLocalStorage = (canvasRef: RefObject<fabric.Canvas | null>) => {
 
     try {
       const parsed = typeof saved === 'string' ? JSON.parse(saved) : saved;
-      canvas.loadFromJSON(parsed, () => {
-        canvas.getObjects().forEach((obj) => {
-          if (obj.type === 'textbox') {
-            loadGoogleFont((obj as fabric.Textbox).fontFamily || 'Roboto');
-          }
-        });
-        canvas.renderAll();
-        if (onDone) onDone(canvas);
-      });
+      // canvas.loadFromJSON(parsed, () => {
+      //   canvas.getObjects().forEach((obj) => {
+      //     if (obj.type === 'textbox') {
+      //       loadGoogleFont((obj as fabric.Textbox).fontFamily || 'Roboto');
+      //     }
+      //   });
+      //   canvas.renderAll();
+      //   if (onDone) onDone(canvas);
+      // });
+      canvas.loadFromJSON(parsed).then((canvas) => canvas.requestRenderAll());
     } catch (err) {
       // Swallow errors during HMR/reload if canvas was torn down
       console.error('restoreFromLocalStorage failed:', err);

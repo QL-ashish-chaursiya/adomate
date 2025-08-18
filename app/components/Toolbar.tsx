@@ -38,7 +38,6 @@ const Toolbar: React.FC<ToolbarProps> = ({
   onExport,
   undoStackLength,
   redoStackLength,
-  autosaveStatus
 }) => {
   return (
     <div className="flex flex-col gap-4 mb-4 p-4 bg-gray-50 rounded">
@@ -154,11 +153,6 @@ const Toolbar: React.FC<ToolbarProps> = ({
         Export PNG
       </button>
 
-      {autosaveStatus && (
-        <span className="text-green-600 text-sm font-medium ml-4 flex items-center">
-          {autosaveStatus}
-        </span>
-      )}
     </div>
   );
 };
